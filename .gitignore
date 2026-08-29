@@ -1,0 +1,19 @@
+# Node.js dependencies and generated output
+node_modules/
+coverage/
+*.log
+npm-debug.log*
+
+# Vagrant machine state
+.vagrant/
+
+# Process-manager runtime files
+*.pid
+*.pid.lock
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+
+# The root .env is intentionally committed because the school audit requires it.
