@@ -1,24 +1,32 @@
-const { randomUUID } = require('node:crypto');
-
-const movies = [];
+const { Op } = require('sequelize');
+const Movie = require('../models/movie.model');
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
-exports.findAll = (request, response) => {
+function sendDatabaseError(response, error) {
+  console.error('Inventory database operation failed:', error.message);
+  return response.status(500).json({ error: 'Internal server error' });
+}
+
+exports.findAll = async (request, response) => {
   const title = typeof request.query.title === 'string'
-    ? request.query.title.trim().toLowerCase()
+    ? request.query.title.trim()
     : '';
 
-  const result = title
-    ? movies.filter((movie) => movie.title.toLowerCase().includes(title))
-    : movies;
-
-  return response.status(200).json(result);
+  try {
+    const where = title
+      ? { title: { [Op.iLike]: `%${title}%` } }
+      : undefined;
+    const movies = await Movie.findAll({ where, order: [['title', 'ASC']] });
+    return response.status(200).json(movies);
+  } catch (error) {
+    return sendDatabaseError(response, error);
+  }
 };
 
-exports.create = (request, response) => {
+exports.create = async (request, response) => {
   const { title, description } = request.body;
 
   if (!isNonEmptyString(title) || !isNonEmptyString(description)) {
@@ -27,38 +35,42 @@ exports.create = (request, response) => {
     });
   }
 
-  const movie = {
-    id: randomUUID(),
-    title: title.trim(),
-    description: description.trim(),
-  };
-
-  movies.push(movie);
-  return response.status(200).json(movie);
-};
-
-exports.deleteAll = (_request, response) => {
-  movies.length = 0;
-  return response.status(200).json({ message: 'All movies were deleted' });
-};
-
-exports.findOne = (request, response) => {
-  const movie = movies.find((item) => item.id === request.params.id);
-
-  if (!movie) {
-    return response.status(404).json({ error: 'Movie not found' });
+  try {
+    const movie = await Movie.create({
+      title: title.trim(),
+      description: description.trim(),
+    });
+    return response.status(200).json(movie);
+  } catch (error) {
+    return sendDatabaseError(response, error);
   }
-
-  return response.status(200).json(movie);
 };
 
-exports.update = (request, response) => {
-  const movie = movies.find((item) => item.id === request.params.id);
-
-  if (!movie) {
-    return response.status(404).json({ error: 'Movie not found' });
+exports.deleteAll = async (_request, response) => {
+  try {
+    const deleted = await Movie.destroy({ where: {} });
+    return response.status(200).json({
+      message: 'All movies were deleted',
+      deleted,
+    });
+  } catch (error) {
+    return sendDatabaseError(response, error);
   }
+};
 
+exports.findOne = async (request, response) => {
+  try {
+    const movie = await Movie.findByPk(request.params.id);
+    if (!movie) {
+      return response.status(404).json({ error: 'Movie not found' });
+    }
+    return response.status(200).json(movie);
+  } catch (error) {
+    return sendDatabaseError(response, error);
+  }
+};
+
+exports.update = async (request, response) => {
   const hasTitle = Object.hasOwn(request.body, 'title');
   const hasDescription = Object.hasOwn(request.body, 'description');
 
@@ -77,19 +89,30 @@ exports.update = (request, response) => {
     });
   }
 
-  if (hasTitle) movie.title = request.body.title.trim();
-  if (hasDescription) movie.description = request.body.description.trim();
+  try {
+    const movie = await Movie.findByPk(request.params.id);
+    if (!movie) {
+      return response.status(404).json({ error: 'Movie not found' });
+    }
 
-  return response.status(200).json(movie);
+    if (hasTitle) movie.title = request.body.title.trim();
+    if (hasDescription) movie.description = request.body.description.trim();
+    await movie.save();
+
+    return response.status(200).json(movie);
+  } catch (error) {
+    return sendDatabaseError(response, error);
+  }
 };
 
-exports.deleteOne = (request, response) => {
-  const movieIndex = movies.findIndex((item) => item.id === request.params.id);
-
-  if (movieIndex === -1) {
-    return response.status(404).json({ error: 'Movie not found' });
+exports.deleteOne = async (request, response) => {
+  try {
+    const deleted = await Movie.destroy({ where: { id: request.params.id } });
+    if (!deleted) {
+      return response.status(404).json({ error: 'Movie not found' });
+    }
+    return response.status(200).json({ message: 'Movie was deleted' });
+  } catch (error) {
+    return sendDatabaseError(response, error);
   }
-
-  movies.splice(movieIndex, 1);
-  return response.status(200).json({ message: 'Movie was deleted' });
 };
