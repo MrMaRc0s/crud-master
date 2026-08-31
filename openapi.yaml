@@ -1,0 +1,224 @@
+openapi: 3.0.3
+info:
+  title: CRUD Master API Gateway
+  version: 1.0.0
+  description: |
+    Gateway for the CRUD Master movie platform. Movie requests are proxied
+    synchronously to the Inventory API, while billing requests are published
+    asynchronously to RabbitMQ for the Billing service.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+tags:
+  - name: Inventory
+    description: CRUD operations for the movie inventory
+  - name: Billing
+    description: Asynchronous billing order submission
+paths:
+  /api/movies:
+    get:
+      tags: [Inventory]
+      summary: List movies
+      description: Returns every movie, optionally filtered by a partial title.
+      parameters:
+        - name: title
+          in: query
+          required: false
+          description: Case-insensitive text contained in the movie title
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Movie list returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movie'
+    post:
+      tags: [Inventory]
+      summary: Create a movie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieInput'
+      responses:
+        '200':
+          description: Movie created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags: [Inventory]
+      summary: Delete all movies
+      responses:
+        '200':
+          description: Movies deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionResult'
+  /api/movies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MovieId'
+    get:
+      tags: [Inventory]
+      summary: Get a movie by ID
+      responses:
+        '200':
+          description: Movie returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Inventory]
+      summary: Update a movie by ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieUpdate'
+      responses:
+        '200':
+          description: Movie updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movie'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Inventory]
+      summary: Delete a movie by ID
+      responses:
+        '200':
+          description: Movie deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/billing:
+    post:
+      tags: [Billing]
+      summary: Queue a billing order
+      description: |
+        Publishes the order to the durable `billing_queue`. A 200 response
+        confirms broker acceptance, not completion by the Billing service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingRequest'
+      responses:
+        '200':
+          description: Billing message accepted by RabbitMQ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '503':
+          description: RabbitMQ is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  parameters:
+    MovieId:
+      name: id
+      in: path
+      required: true
+      description: Movie UUID
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Movie not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Movie:
+      type: object
+      required: [id, title, description]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+    MovieInput:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          example: A new movie
+        description:
+          type: string
+          example: Very short description
+    MovieUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+    BillingRequest:
+      type: object
+      required: [user_id, number_of_items, total_amount]
+      properties:
+        user_id:
+          type: string
+          example: '20'
+        number_of_items:
+          type: string
+          example: '99'
+        total_amount:
+          type: string
+          example: '250'
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    DeletionResult:
+      allOf:
+        - $ref: '#/components/schemas/Message'
+        - type: object
+          properties:
+            deleted:
+              type: integer
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
