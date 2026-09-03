@@ -23,7 +23,7 @@ for variable in "${required_variables[@]}"; do
 done
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y postgresql rabbitmq-server
+apt-get install -y postgresql python3 python3-venv rabbitmq-server
 systemctl enable --now postgresql rabbitmq-server
 
 if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${BILLING_DB_USER}'" | grep -q 1; then
@@ -46,7 +46,11 @@ rabbitmqctl set_user_tags "${RABBITMQ_USER}" management
 rabbitmq-plugins enable rabbitmq_management
 
 install -d -m 0755 /opt/crud-master/srcs/billing-app
-rsync -a --delete --exclude node_modules /vagrant/service/ /opt/crud-master/srcs/billing-app/
+rsync -a --delete \
+  --exclude node_modules \
+  --exclude .venv \
+  /vagrant/service/ \
+  /opt/crud-master/srcs/billing-app/
 
 cat > /opt/crud-master/.env <<EOF
 BILLING_DB_HOST=${BILLING_DB_HOST}
@@ -63,10 +67,16 @@ EOF
 chmod 0600 /opt/crud-master/.env
 
 cd /opt/crud-master/srcs/billing-app
-npm ci --omit=dev
+python3 -m venv .venv
+./.venv/bin/python -m pip install \
+  --disable-pip-version-check \
+  --requirement requirements.txt
 
 pm2 delete billing_app >/dev/null 2>&1 || true
-pm2 start server.js --name billing_app --time
+pm2 start server.py \
+  --name billing_app \
+  --interpreter /opt/crud-master/srcs/billing-app/.venv/bin/python \
+  --time
 pm2 save --force
 
 sleep 2
