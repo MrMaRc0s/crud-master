@@ -52,7 +52,7 @@ Vagrant.configure('2') do |config|
       ip: settings['INVENTORY_VM_IP'],
       virtualbox__intnet: 'crud-master-network'
     inventory.vm.synced_folder 'srcs/inventory-app', '/vagrant/service',
-      type: 'rsync', rsync__exclude: ['node_modules', '.venv']
+      type: 'rsync', rsync__exclude: ['node_modules']
 
     inventory.vm.provider 'virtualbox' do |virtualbox|
       virtualbox.name = 'crud-master-inventory'
@@ -84,7 +84,7 @@ Vagrant.configure('2') do |config|
       host_ip: '127.0.0.1',
       id: 'rabbitmq_management'
     billing.vm.synced_folder 'srcs/billing-app', '/vagrant/service',
-      type: 'rsync', rsync__exclude: ['node_modules', '.venv']
+      type: 'rsync', rsync__exclude: ['node_modules']
 
     billing.vm.provider 'virtualbox' do |virtualbox|
       virtualbox.name = 'crud-master-billing'
@@ -121,7 +121,7 @@ Vagrant.configure('2') do |config|
       host_ip: '127.0.0.1',
       id: 'api_gateway'
     gateway.vm.synced_folder 'srcs/api-gateway', '/vagrant/service',
-      type: 'rsync', rsync__exclude: ['node_modules', '.venv']
+      type: 'rsync', rsync__exclude: ['node_modules']
 
     gateway.vm.provider 'virtualbox' do |virtualbox|
       virtualbox.name = 'crud-master-gateway'
