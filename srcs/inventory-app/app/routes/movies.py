@@ -31,7 +31,10 @@ def create_movies_blueprint(session_factory) -> Blueprint:
 
     @movies_blueprint.post("")
     def create():
-        body = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
         title = body.get("title")
         description = body.get("description")
 
@@ -72,7 +75,10 @@ def create_movies_blueprint(session_factory) -> Blueprint:
         if parsed_id is None:
             return jsonify({"error": "Movie not found"}), 404
 
-        body = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
         has_title = "title" in body
         has_description = "description" in body
 
