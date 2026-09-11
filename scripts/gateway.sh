@@ -18,8 +18,15 @@ for variable in "${required_variables[@]}"; do
   fi
 done
 
-install -d -m 0755 /opt/crud-master/srcs/api-gateway
-rsync -a --delete --exclude node_modules /vagrant/service/ /opt/crud-master/srcs/api-gateway/
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y python3 python3-venv
+
+install -d -m 0755 /opt/crud-master/srcs/api-gateway-app
+rsync -a --delete \
+  --exclude node_modules \
+  --exclude .venv \
+  /vagrant/service/ \
+  /opt/crud-master/srcs/api-gateway-app/
 
 cat > /opt/crud-master/.env <<EOF
 GATEWAY_PORT=${GATEWAY_PORT}
@@ -32,11 +39,17 @@ RABBITMQ_QUEUE=${RABBITMQ_QUEUE}
 EOF
 chmod 0600 /opt/crud-master/.env
 
-cd /opt/crud-master/srcs/api-gateway
-npm ci --omit=dev
+cd /opt/crud-master/srcs/api-gateway-app
+python3 -m venv .venv
+./.venv/bin/python -m pip install \
+  --disable-pip-version-check \
+  --requirement requirements.txt
 
 pm2 delete api_gateway >/dev/null 2>&1 || true
-pm2 start server.js --name api_gateway --time
+pm2 start server.py \
+  --name api_gateway \
+  --interpreter /opt/crud-master/srcs/api-gateway-app/.venv/bin/python \
+  --time
 pm2 save --force
 
 curl --fail --silent --show-error \

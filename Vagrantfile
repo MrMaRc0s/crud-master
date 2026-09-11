@@ -120,7 +120,7 @@ Vagrant.configure('2') do |config|
       host: settings['GATEWAY_PORT'].to_i,
       host_ip: '127.0.0.1',
       id: 'api_gateway'
-    gateway.vm.synced_folder 'srcs/api-gateway', '/vagrant/service',
+    gateway.vm.synced_folder 'srcs/api-gateway-app', '/vagrant/service',
       type: 'rsync', rsync__exclude: ['node_modules', '.venv']
 
     gateway.vm.provider 'virtualbox' do |virtualbox|
