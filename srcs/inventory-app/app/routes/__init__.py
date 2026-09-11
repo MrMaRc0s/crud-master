@@ -1,1 +1,0 @@
-"""Inventory HTTP routes."""
