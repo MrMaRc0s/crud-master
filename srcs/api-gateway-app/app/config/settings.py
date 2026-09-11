@@ -32,10 +32,20 @@ def require_port(name: str) -> int:
 class Settings:
     gateway_port: int
     inventory_api_url: str
+    rabbitmq_host: str
+    rabbitmq_port: int
+    rabbitmq_user: str
+    rabbitmq_password: str
+    rabbitmq_queue: str
 
 
 def load_settings() -> Settings:
     return Settings(
         gateway_port=require_port("GATEWAY_PORT"),
         inventory_api_url=require_environment_variable("INVENTORY_API_URL").rstrip("/"),
+        rabbitmq_host=require_environment_variable("RABBITMQ_HOST"),
+        rabbitmq_port=require_port("RABBITMQ_PORT"),
+        rabbitmq_user=require_environment_variable("RABBITMQ_USER"),
+        rabbitmq_password=require_environment_variable("RABBITMQ_PASSWORD"),
+        rabbitmq_queue=require_environment_variable("RABBITMQ_QUEUE"),
     )

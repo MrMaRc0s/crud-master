@@ -7,7 +7,15 @@ from app import create_app
 from app.config.settings import Settings
 
 
-SETTINGS = Settings(gateway_port=3000, inventory_api_url="http://inventory:8080")
+SETTINGS = Settings(
+    gateway_port=3000,
+    inventory_api_url="http://inventory:8080",
+    rabbitmq_host="rabbitmq",
+    rabbitmq_port=5672,
+    rabbitmq_user="user",
+    rabbitmq_password="password",
+    rabbitmq_queue="billing_queue",
+)
 
 
 class ProxyTests(unittest.TestCase):
