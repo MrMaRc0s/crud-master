@@ -1,21 +1,24 @@
-import os
-from pathlib import Path
+import logging
 
-from dotenv import load_dotenv
-from flask import Flask, jsonify
-
-ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(ROOT_ENV_FILE, override=False)
-
-app = Flask(__name__)
+from app import create_app
+from app.config.settings import load_settings
 
 
-@app.get("/api/movies")
-def list_movies_stub():
-    # Temporary stub, replaced once the Inventory proxy is in place.
-    return jsonify([]), 200
+LOGGER = logging.getLogger(__name__)
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    settings = load_settings()
+    app = create_app(settings)
+
+    LOGGER.info("API Gateway is listening on port %s", settings.gateway_port)
+    app.run(host="0.0.0.0", port=settings.gateway_port)
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("GATEWAY_PORT", "3000"))
-    app.run(host="0.0.0.0", port=port)
+    main()
