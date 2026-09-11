@@ -18,7 +18,7 @@ for variable in "${required_variables[@]}"; do
 done
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y postgresql
+apt-get install -y postgresql python3 python3-venv
 systemctl enable --now postgresql
 
 if runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${INVENTORY_DB_USER}'" | grep -q 1; then
@@ -32,7 +32,11 @@ if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='
 fi
 
 install -d -m 0755 /opt/crud-master/srcs/inventory-app
-rsync -a --delete --exclude node_modules /vagrant/service/ /opt/crud-master/srcs/inventory-app/
+rsync -a --delete \
+  --exclude node_modules \
+  --exclude .venv \
+  /vagrant/service/ \
+  /opt/crud-master/srcs/inventory-app/
 
 cat > /opt/crud-master/.env <<EOF
 INVENTORY_PORT=${INVENTORY_PORT}
@@ -45,10 +49,16 @@ EOF
 chmod 0600 /opt/crud-master/.env
 
 cd /opt/crud-master/srcs/inventory-app
-npm ci --omit=dev
+python3 -m venv .venv
+./.venv/bin/python -m pip install \
+  --disable-pip-version-check \
+  --requirement requirements.txt
 
 pm2 delete inventory_app >/dev/null 2>&1 || true
-pm2 start server.js --name inventory_app --time
+pm2 start server.py \
+  --name inventory_app \
+  --interpreter /opt/crud-master/srcs/inventory-app/.venv/bin/python \
+  --time
 pm2 save --force
 
 curl --fail --silent --show-error \
