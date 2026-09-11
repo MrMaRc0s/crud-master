@@ -9,32 +9,32 @@ Inventory communication is synchronous HTTP. Billing communication is asynchrono
 ```text
 Client ──HTTP──> API Gateway
                     │
-                    ├──HTTP──> Inventory API ──PostgreSQL──> movies database
+                    ├──HTTP──> Inventory API ──PostgreSQL──> movies_db
                     │
                     └──AMQP──> RabbitMQ billing_queue ──AMQP──> Billing consumer
                                                                   │
-                                                                  └──PostgreSQL──> orders database
+                                                                  └──PostgreSQL──> billing_db
 ```
 
 | Virtual machine | Address | Components |
 | --- | --- | --- |
 | `gateway-vm` | `192.168.57.10` | API Gateway |
-| `inventory-vm` | `192.168.57.11` | Inventory API and PostgreSQL `movies` database |
-| `billing-vm` | `192.168.57.12` | RabbitMQ, Billing consumer, and PostgreSQL `orders` database |
+| `inventory-vm` | `192.168.57.11` | Inventory API and PostgreSQL `movies_db` database |
+| `billing-vm` | `192.168.57.12` | RabbitMQ, Billing consumer, and PostgreSQL `billing_db` database |
 
 The VMs communicate through the isolated VirtualBox internal network `crud-master-network`. The host exposes only the Gateway and RabbitMQ management ports.
 
 ## Technology stack
 
-- Node.js 24 and Express
-- Sequelize with PostgreSQL
-- RabbitMQ and `amqplib`
-- `http-proxy-middleware`
+- Python 3 and Flask
+- SQLAlchemy with PostgreSQL and Psycopg
+- RabbitMQ and `pika`
+- `requests` for the Inventory HTTP proxy
 - PM2 process management
 - Vagrant with VirtualBox
 - OpenAPI and Postman
 
-Each Node.js service has its own `package.json` and lockfile because each service is independently installable and has different dependencies.
+Each Python service has its own pinned `requirements.txt` and isolated virtual environment because the services are independently installable and have different dependencies.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ Install the following on the host machine:
 - Hardware virtualization enabled in BIOS/UEFI
 - Postman for importing and running the committed collection
 
-Node.js, PostgreSQL, RabbitMQ, and PM2 are installed inside the appropriate VMs by the provisioning scripts.
+Python, PostgreSQL, RabbitMQ, Node.js, and PM2 are installed inside the appropriate VMs by the provisioning scripts. Node.js is required only as the runtime for PM2; all three project services run with Python.
 
 ## Configuration
 
@@ -61,7 +61,7 @@ The main configurable values are:
 - RabbitMQ host, ports, user, password, and queue name
 - RabbitMQ management host port
 
-No application credential is hardcoded in the JavaScript source.
+No application credential is hardcoded in the Python source.
 
 ## Build and run
 
@@ -158,7 +158,7 @@ vagrant ssh inventory-vm
 sudo -i -u postgres
 psql
 \l
-\c movies
+\c movies_db
 TABLE movies;
 ```
 
@@ -169,7 +169,7 @@ vagrant ssh billing-vm
 sudo -i -u postgres
 psql
 \l
-\c orders
+\c billing_db
 TABLE orders;
 ```
 
@@ -196,7 +196,7 @@ The consumer processes the queued message, acknowledges it only after the databa
 
 ## PM2 process management
 
-PM2 keeps each Node.js application running, restarts it after an unexpected failure, stores logs, and restores the saved process list during VM boot.
+PM2 keeps each Python application running, restarts it after an unexpected failure, stores logs, and restores the saved process list during VM boot. PM2 itself uses Node.js, but it starts each service with that service's virtual-environment Python interpreter.
 
 | VM | PM2 process name |
 | --- | --- |
@@ -217,10 +217,10 @@ sudo pm2 start <process_name>
 
 | Script | Responsibility |
 | --- | --- |
-| `scripts/common.sh` | Updates APT metadata and installs Node.js 24, PM2, CA certificates, curl, and rsync. It also configures PM2 startup with systemd. |
-| `scripts/inventory.sh` | Installs PostgreSQL, creates or updates the Inventory role and `movies` database, installs the service dependencies, and starts `inventory_app`. |
-| `scripts/billing.sh` | Installs PostgreSQL and RabbitMQ, creates the `orders` database, configures the RabbitMQ user, permissions, management plugin and queue consumer, then starts `billing_app`. |
-| `scripts/gateway.sh` | Copies and installs the Gateway, writes its VM-specific environment, starts `api_gateway`, and performs an Inventory health request. |
+| `scripts/common.sh` | Updates APT metadata and installs Node.js 24, PM2, CA certificates, curl, and rsync. Node.js is installed because PM2 requires it. The script also configures PM2 startup with systemd. |
+| `scripts/inventory.sh` | Installs Python, PostgreSQL, creates or updates the Inventory role and `movies_db` database, builds the service virtual environment, and starts `inventory_app`. |
+| `scripts/billing.sh` | Installs Python, PostgreSQL and RabbitMQ, creates `billing_db`, configures the RabbitMQ user, permissions and management plugin, builds the service virtual environment, then starts `billing_app`. |
+| `scripts/gateway.sh` | Installs Python, deploys `api-gateway-app`, builds its virtual environment, writes its VM-specific environment, starts `api_gateway`, and performs an Inventory health request. |
 
 Important shell commands and flags used by the scripts:
 
@@ -228,26 +228,36 @@ Important shell commands and flags used by the scripts:
 - `systemctl enable --now` starts a service immediately and enables it for future boots.
 - `runuser -u postgres -- ...` executes a database administration command as the PostgreSQL system user.
 - `rabbitmqctl set_permissions -p / USER '.*' '.*' '.*'` allows the exercise user to configure, write to, and read from resources in the `/` virtual host.
-- `rsync -a --delete` makes the deployed service copy match the source directory while excluding `node_modules`.
-- `npm ci --omit=dev` performs a reproducible lockfile-based production dependency installation.
+- `rsync -a --delete` makes the deployed service copy match the source directory while excluding generated dependency directories such as `.venv`.
+- `python3 -m venv .venv` creates an isolated Python environment for one service.
+- `.venv/bin/python -m pip install --requirement requirements.txt` installs that service's pinned dependencies.
+- `pm2 start server.py --interpreter ...` runs a Python entry point with its virtual-environment interpreter.
 - `pm2 save --force` saves the process list that PM2 restores during boot.
 
-The scripts are idempotent: running `vagrant provision` again updates existing users, copies the latest source, reinstalls locked dependencies, and restarts the relevant process instead of creating duplicate resources.
+The scripts are idempotent: running `vagrant provision` again updates existing users, copies the latest source, reinstalls pinned dependencies, and restarts the relevant process instead of creating duplicate resources.
 
 ## Manual service startup
 
-For development without Vagrant, install and configure PostgreSQL and RabbitMQ according to `.env`, then install dependencies in each service:
+For development without Vagrant, install and configure PostgreSQL and RabbitMQ according to `.env`. Create an isolated virtual environment and install dependencies inside each service directory:
 
 ```bash
-cd srcs/inventory-app && npm ci
-cd ../billing-app && npm ci
-cd ../api-gateway && npm ci
+cd srcs/inventory-app
+python3 -m venv .venv
+./.venv/bin/python -m pip install --requirement requirements.txt
+
+cd ../billing-app
+python3 -m venv .venv
+./.venv/bin/python -m pip install --requirement requirements.txt
+
+cd ../api-gateway-app
+python3 -m venv .venv
+./.venv/bin/python -m pip install --requirement requirements.txt
 ```
 
 Start each service from its own directory in a separate terminal:
 
 ```bash
-node server.js
+./.venv/bin/python server.py
 ```
 
 Start Inventory and Billing before the Gateway for the initial connection. The recommended and audited execution method remains `vagrant up`.
@@ -260,4 +270,4 @@ Start Inventory and Billing before the Gateway for the initial connection. The r
 - The Billing consumer uses manual acknowledgements after successful persistence, preventing RabbitMQ from discarding an order before it reaches PostgreSQL.
 - Each service owns its database and dependencies, reducing coupling between services.
 - VM-specific `.env` files are generated with mode `0600`, so only root can read their credentials.
-- Application code is copied to `/opt/crud-master` and managed by PM2, while dependencies are regenerated from committed lockfiles.
+- Application code is copied to `/opt/crud-master` and managed by PM2, while dependencies are regenerated from each service's pinned `requirements.txt`.
