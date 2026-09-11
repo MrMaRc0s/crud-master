@@ -36,7 +36,10 @@ class MovieRequestValidationTests(unittest.TestCase):
         self.client = create_app(self.session_factory).test_client()
 
     def test_create_rejects_json_that_is_not_an_object(self):
-        response = self.client.post("/api/movies", json=[])
+        response = self.client.post(
+            "/api/movies",
+            json=[{"title": "Not an object payload"}],
+        )
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
@@ -46,7 +49,7 @@ class MovieRequestValidationTests(unittest.TestCase):
         self.session_factory.assert_not_called()
 
     def test_update_rejects_json_that_is_not_an_object(self):
-        response = self.client.put(f"/api/movies/{uuid.uuid4()}", json="movie")
+        response = self.client.put(f"/api/movies/{uuid.uuid4()}", json="title")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
